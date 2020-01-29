@@ -1,0 +1,320 @@
+---
+title: "MVA Project"
+author: "Alec Klessig, Travis Clark, Chandler Morris, & Mychael Solis-Wheeler"
+date: "04/04/19"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+1- Upload & check data for any nulls:
+```{r echo=FALSE}
+# Read the CSV into a variable
+spot_data <- read.csv('SpotifyAudioFeaturesNov2018.csv', TRUE)
+
+# Check for missing values
+cat("Count of missing values: ", sum(is.na(spot_data)))
+# No missing values
+
+# Check for duplicate rows
+cat("\nCount of duplicate rows: ", sum(duplicated(spot_data)))
+# No duplicate rows
+```
+
+2- For slicing & picking variables from data:
+```{r eval=FALSE, echo=FALSE}
+# Slicing the data to get the columns we want
+spot_data <- spot_data[,c(5, 6, 7, 11, 14, 16, 17)]
+# Check the slice
+head(spot_data)
+
+# Check the data types of the columns
+sapply(spot_data, class)
+# All data types seem correct
+
+# Variables include:
+# how suitable a track is for dancing (danceability) 
+# the duration of a track in milliseconds (duration_ms)
+# how energetic in intensity a track is (energy)
+# the quality of a sound in loudness of a track  (loudness)
+# the speed or pace of a track (tempo)
+# the musical positiveness conveyed by a track (valence)
+# the number plays and how recent those plays from a tack (popularity)
+```
+
+3- To scale the data & finding outliers:
+```{r echo=FALSE}
+# scale the data
+spot_data_scaled <- scale(spot_data)
+head(spot_data_scaled)
+
+# Find outliers
+#chi-squared plot 
+xbar <- colMeans(spot_data_scaled)
+S <- cor(spot_data_scaled)
+d2 <- mahalanobis(spot_data_scaled, xbar, S)
+
+quantiles <- qchisq((1:nrow(spot_data_scaled) - 1/2)/nrow(spot_data_scaled), df = ncol(spot_data_scaled))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+```
+
+4- To remove outliers:
+```{r eval=FALSE, echo=FALSE}
+# remove outliers: 8 outliers in chi-sq plot
+percentage.to.remove <- 1 # Remove 1% of points
+number.to.remove <- 8
+m.dist <- mahalanobis(spot_data_scaled, colMeans(spot_data_scaled), cov(spot_data_scaled))
+m.dist.order <- order(m.dist, decreasing=TRUE)
+rows.to.keep.index <- m.dist.order[(number.to.remove+1):nrow(spot_data_scaled)]
+spot_data_scaled_no_outliers <- spot_data_scaled[rows.to.keep.index,]
+```
+
+5- To check data again for outliers removed:
+```{r echo=FALSE}
+#chi-squared plot 
+xbar <- colMeans(spot_data_scaled_no_outliers)
+S <- cov(spot_data_scaled_no_outliers)
+d2 <- mahalanobis(spot_data_scaled_no_outliers, xbar, S)
+
+quantiles <- qchisq((1:nrow(spot_data_scaled_no_outliers) - 1/2)/nrow(spot_data_scaled_no_outliers), df = ncol(spot_data_scaled_no_outliers))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+#the number-labels on the chi squared plot can be compared with their respective ID’s to find out the outlier songs in the ‘spot’ dataset
+```
+
+5- For code to generate a heatmap of data:
+```{r eval=FALSE, echo=FALSE}
+library(ggplot2)  # required for heatmaps
+library(reshape2) # required for melting the correlation matrix
+
+# Note: Correlation matrix heatmap visualization code is from http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
+
+# Helper functions
+# Get lower triangle of the correlation matrix
+get_lower_tri<-function(cormat){
+  cormat[upper.tri(cormat)] <- NA
+  return(cormat)
+}
+
+# Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+  
+# Reorder the correlation matrix by the correlation coefficients
+reorder_cormat <- function(cormat){
+  # Use correlation between variables as distance
+  dd <- as.dist((1-cormat)/2)
+  hc <- hclust(dd)
+  cormat <-cormat[hc$order, hc$order]
+}
+```
+
+6- For generating a heatmap of the data:
+```{r echo=FALSE}
+# Note: Correlation matrix heatmap visualization code is from http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
+
+# Get the correlation matrix
+cormat <- round(cor(spot_data_scaled_no_outliers), 2)
+
+# Reorder the correlation matrix
+cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+
+# Melt the correlation matrix
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()
+
+# Display the heatmap with correlation coefficients displayed on it
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))
+```
+
+7- For generating scatterplots of the data:
+```{r echo=FALSE}
+library(ResourceSelection)  # required for kdepairs
+kdepairs(spot_data_scaled_no_outliers)
+```
+
+(Optional) To unscale the data
+```{r echo=FALSE}
+library(ggfortify)
+df <- spot_data_scaled_no_outliers
+spot_data.ns <- ggfortify::unscale(base::scale(df))
+head(spot_data.ns)
+```
+
+(Optional) Assessing extra outliers
+```{r}
+#chi-squared plot 
+xbar <- colMeans(spot2[,-1])
+S <- cov(spot2[,-1])
+d2 <- mahalanobis(spot2[,-1], xbar, S)
+
+quantiles <- qchisq((1:nrow(spot2[,-1]) - 1/2)/nrow(spot2[,-1]), df = ncol(spot2[,-1]))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+text(quantiles, sd2, (names(sd2)), col = "red")
+#the number-labels on the chi squared plot can be compared with their respective ID’s to find out the outlier songs in the ‘spot’ dataset
+
+```
+
+(Optional) To remove 1% of extreme rows
+```{r}
+percentage.to.remove <- 1 # Remove 1% of points
+spot3 <- spot2[,-1]
+number.to.remove <- trunc(nrow(spot3) * percentage.to.remove / 100)
+m.dist <- mahalanobis(spot3, colMeans(spot3), cov(spot3))
+m.dist.order <- order(m.dist, decreasing=TRUE)
+rows.to.keep.index <- m.dist.order[(number.to.remove+1):nrow(spot3)]
+spot4 <- spot3[rows.to.keep.index,]
+
+```
+
+(Optional) Assessing outliers(a):
+```{r}
+#chi-squared plot 
+xbar <- colMeans(spot4)
+S <- cov(spot4)
+d2 <- mahalanobis(spot4, xbar, S)
+
+quantiles <- qchisq((1:nrow(spot4) - 1/2)/nrow(spot4), df = ncol(spot4))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+text(quantiles, sd2, (names(sd2)), col = "red")
+#the number-labels on the chi squared plot can be compared with their respective ID’s to find out the outlier songs in the ‘spot’ dataset
+
+```
+
+8 - Taking a random sample of n = 10000 from the data:
+```{r}
+# take a random sample of size 10000 from a dataset mydata 
+# sample without replacement
+set.seed(spot4rs)
+options(digits = 3)
+spot4rs <- spot_data_scaled_no_outliers[sample(1:nrow(spot_data_scaled_no_outliers), 10000, replace=FALSE),]
+```
+
+9 - Conduct Clustering Analysis:
+
+a) For SINGLE linkage, number of clusters is 2 as shown in the scree plot below. The hierarchical clustering based on SINGLE linkage (k = 2 groups) and a contingency table is also shown:
+```{r dpi = 300}
+hc1 = hclust(dist(spot4rs), "single")
+#names(hc1) #NOTE: energy & loudness, valence & danceability had high corr
+scree.bit <- head(rev(hc1$height), 100)
+plot(scree.bit)
+# # The drop up point was at 1, therefore there are 2 clusters (Elbow Test)
+ct1 = cutree(hc1, 2) # For k = 2 groups
+plot(spot4rs[,3:4], col = ct1, main = "Hierarchical Clustering With Single Linkage")
+hc1.table <- table(ct1)
+hc1.table
+```
+
+b) For COMPLETE linkage, number of clusters is 2 as shown in the scree plot below. The hierarchical clustering based on COMPLETE linkage (k = 2 groups) and a contingency table is also shown:
+```{r dpi = 300}
+hc2 = hclust(dist(spot4rs), "complete")
+scree.bit <- head(rev(hc2$height), 100)
+plot(scree.bit, xlab="Number of Clusters",
+  ylab="hc2$height", main="Scree Plot-HC Complete")
+# # The drop up point was at 1, therefore there are 2 clusters (Elbow Test)
+ct2 = cutree(hc2, 2) # For k = 2 groups
+plot(spot4rs[,3:4], col = ct2, main = "Hierarchical Clustering With Complete Linkage")
+hc2.table <- table(ct2)
+hc2.table
+
+# Mean z-scores (cluster centeriods) of ALL variables
+clust_1 <- subset((spot4rs), ct2==1)
+colMeans(clust_1)
+
+clust_2 <- subset((spot4rs), ct2==2)
+colMeans(clust_2)
+```
+
+c) For AVERAGE linkage, number of clusters is 3 as shown in the scree plot below. The hierarchical clustering based on AVERAGE linkage (k = 3 groups) and a contingency table is also shown:
+```{r dpi = 300}
+hc3 = hclust(dist(spot4rs), "average")
+scree.bit <- head(rev(hc3$height), 100)
+plot(scree.bit)
+# # The drop up point was at 2, therefore there are 3 clusters (Elbow Test)
+ct3 = cutree(hc3, 3) # For k = 3 groups
+plot(spot4rs[,3:4], col = ct3, main = "Hierarchical Clustering With Average Linkage")
+hc3.table <- table(ct3)
+hc3.table
+```
+
+d1) The appropriate number of clusters in k-means clustering with nstart = 10 is 2 based on the WGSS scree plot function as shown below:
+```{r}
+plot.wgss = function(spot4rs, maxc) {
+  wss = numeric(maxc)
+  for (i in 1:maxc) 
+    wss[i] = kmeans(spot4rs,centers=i, nstart = 10)$tot.withinss 
+  plot(1:maxc, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares", main="Scree Plot-Kmeans") 
+}
+plot.wgss(spot4rs, 6)
+```
+
+d2) The k-means clustering by nstart = 10 (given k = 2 groups) and a contingency table is also shown:
+```{r dpi = 300}
+km <- kmeans(spot4rs, centers = 2, nstart = 10) # Applied k-means for k = 2 groups
+plot(spot4rs[,3:4], col = km$cluster, pch = km$cluster, main = "k-means Clustering")
+km.table <- table(km$cluster)
+km.table
+km$centers # Cluster centeriods of ALL variables
+```
+
+
+e) The model-based clustering (given k = 2 groups) and a contingency table is also shown: 
+```{r dpi = 300}
+library(mclust)
+mc = Mclust(spot4rs, 2) # For k = 2 groups
+#names(mc)
+plot(spot4rs[,3:4], col = mc$classification, main = "Model-based Clustering")
+mc.table <- table(mc$classification)
+mc.table
+plot(mc, what = "classification")
+summary(mc)
+
+# Mean z-scores (cluster centeriods) of ALL variables
+clust_1 <- subset((spot4rs), mc$classification==1)
+colMeans(clust_1)
+
+clust_2 <- subset((spot4rs), mc$classification==2)
+colMeans(clust_2)
+```
+
+
+

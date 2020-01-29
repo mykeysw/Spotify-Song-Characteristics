@@ -1,0 +1,117 @@
+---
+title: "MVA Project"
+author: "Alec Klessig, Travis Clark, Chandler Morris, & Mychael Solis-Wheeler"
+date: "04/04/19"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+1- Spotify data:
+```{r}
+#import spotify dataset
+spot <- read.csv('SpotifyAudioFeaturesNov2018.csv', TRUE)
+spot <- na.fail(spot) # checks for any missing values
+spot2 <- spot[,c(2,5,6,7,11,14,16,17)]
+
+#creating rownames 
+row.names(spot2) <- 1:nrow(spot2)
+head(spot2)
+# Variables include:
+# spotify uri of a song (id)
+# how suitable a track is for dancing (danceability) 
+# how energetic in intensity a track is (energy)
+# the quality of a sound in loudness of a track  (loudness)
+# the musical positiveness conveyed by a track (valence)
+# the speed or pace of a track (tempo) 
+# the duration of a track in milliseconds (duration_ms)
+```
+
+2- Assessing outliers(a):
+```{r}
+#chi-squared plot 
+xbar <- colMeans(spot2[,-1])
+S <- cov(spot2[,-1])
+d2 <- mahalanobis(spot2[,-1], xbar, S)
+
+quantiles <- qchisq((1:nrow(spot2[,-1]) - 1/2)/nrow(spot2[,-1]), df = ncol(spot2[,-1]))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+text(quantiles, sd2, (names(sd2)), col = "red")
+#the number-labels on the chi squared plot can be compared with their respective ID’s to find out the outlier songs in the ‘spot’ dataset
+
+```
+To remove 1% of extreme rows
+```{r}
+percentage.to.remove <- 1 # Remove 1% of points
+spot3 <- spot2[,-1]
+number.to.remove <- trunc(nrow(spot3) * percentage.to.remove / 100)
+m.dist <- mahalanobis(spot3, colMeans(spot3), cov(spot3))
+m.dist.order <- order(m.dist, decreasing=TRUE)
+rows.to.keep.index <- m.dist.order[(number.to.remove+1):nrow(spot3)]
+spot4 <- spot3[rows.to.keep.index,]
+
+```
+
+Running again
+```{r}
+#chi-squared plot 
+xbar <- colMeans(spot4)
+S <- cov(spot4)
+d2 <- mahalanobis(spot4, xbar, S)
+
+quantiles <- qchisq((1:nrow(spot4) - 1/2)/nrow(spot4), df = ncol(spot4))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+text(quantiles, sd2, (names(sd2)), col = "red")
+#the number-labels on the chi squared plot can be compared with their respective ID’s to find out the outlier songs in the ‘spot’ dataset
+
+```
+
+2- Assessing outliers(b):
+```{r}
+# Prior to PCA (cont) 
+# plotted a scatterplot matrix
+plot(spot2)
+
+# plot one of the pair variables for finding the outlier
+plot(danceability ~ energy, data = spot2, 
+     cex.lab = 0.7, 
+     xlab = "danceability", 
+     ylab = "energy")
+
+# adds text to plot
+text(danceability ~ energy, data = spot2, 
+     labels=(row.names(spot2)))
+
+x <- spot2[, c("danceability", "energy")]
+library(MVA)
+bvbox(x, add = T)
+```
+
+2- Assessing outliers(c):
+```{r}
+# Prior to PCA (cont) 
+# Matrix of various plots
+library(ResourceSelection)
+kdepairs(spot2) 
+```
+Based from a scatterplot matrix performed and pair variables plotted previously, outliers were to be ????
+
+a) PCA using correlation matrix:
+```{r}
+# principal components extracted from correlation matrix
+options(digits = 2)
+spot2_pca <- princomp(spot2[,-1], cor = T)
+summary(spot2_pca, loading = T)
+
+# biplot of the first two principal components
+biplot(spot2_pca, col=c("black", "blue"), cex = 0.6)
+options(digits = 2)
+```
+
