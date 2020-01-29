@@ -1,0 +1,159 @@
+---
+title: "Cleaning and Visualizing Spotify Dataset"
+author: "Travis Clark"
+date: "April 30, 2019"
+output: word_document
+---
+
+```{r echo=FALSE}
+# Read the CSV into a variable
+spot_data <- read.csv("C:\\Users\\tvisc\\Desktop\\School\\Grad School\\SP 2019\\Multivariate Analysis\\Project\\SpotifyAudioFeaturesNov2018.csv", header = T)
+
+# Check for missing values
+cat("Count of missing values: ", sum(is.na(spot_data)))
+# No missing values
+
+# Check for duplicate rows
+cat("\nCount of duplicate rows: ", sum(duplicated(spot_data)))
+# No duplicate rows
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Slicing the data to get the columns we want
+spot_data <- spot_data[,c(5, 6, 7, 11, 14, 16, 17)]
+```
+
+```{r echo=FALSE}
+# Check the slice
+head(spot_data)
+
+# Check the data types of the columns
+sapply(spot_data, class)
+# All data types seem correct
+```
+
+```{r echo=FALSE}
+# scale the data
+spot_data_scaled <- scale(spot_data)
+
+# Find outliers
+#chi-squared plot 
+xbar <- colMeans(spot_data_scaled)
+S <- cor(spot_data_scaled)
+d2 <- mahalanobis(spot_data_scaled, xbar, S)
+
+quantiles <- qchisq((1:nrow(spot_data_scaled) - 1/2)/nrow(spot_data_scaled), df = ncol(spot_data_scaled))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove outliers: 8 outliers in chi-sq plot
+percentage.to.remove <- 1 # Remove 1% of points
+number.to.remove <- 8
+m.dist <- mahalanobis(spot_data_scaled, colMeans(spot_data_scaled), cov(spot_data_scaled))
+m.dist.order <- order(m.dist, decreasing=TRUE)
+rows.to.keep.index <- m.dist.order[(number.to.remove+1):nrow(spot_data_scaled)]
+spot_data_scaled_no_outliers <- spot_data_scaled[rows.to.keep.index,]
+```
+
+```{r echo=FALSE}
+#chi-squared plot 
+xbar <- colMeans(spot_data_scaled_no_outliers)
+S <- cov(spot_data_scaled_no_outliers)
+d2 <- mahalanobis(spot_data_scaled_no_outliers, xbar, S)
+
+quantiles <- qchisq((1:nrow(spot_data_scaled_no_outliers) - 1/2)/nrow(spot_data_scaled_no_outliers), df = ncol(spot_data_scaled_no_outliers))
+sd2 <- sort(d2)
+
+plot(quantiles, sd2, xlab = expression(paste(chi[3]^2, " Quantile")), ylab = "Ordered squared distances")
+abline(a = 0, b = 1)
+#the number-labels on the chi squared plot can be compared with their respective ID’s to find out the outlier songs in the ‘spot’ dataset
+```
+
+```{r eval=FALSE, echo=FALSE}
+library(ggplot2)  # required for heatmaps
+library(reshape2) # required for melting the correlation matrix
+
+# Note: Correlation matrix heatmap visualization code is from http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
+
+# Helper functions
+# Get lower triangle of the correlation matrix
+get_lower_tri<-function(cormat){
+  cormat[upper.tri(cormat)] <- NA
+  return(cormat)
+}
+
+# Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+  
+# Reorder the correlation matrix by the correlation coefficients
+reorder_cormat <- function(cormat){
+  # Use correlation between variables as distance
+  dd <- as.dist((1-cormat)/2)
+  hc <- hclust(dd)
+  cormat <-cormat[hc$order, hc$order]
+}
+
+
+```
+
+```{r echo=FALSE}
+# Note: Correlation matrix heatmap visualization code is from http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
+
+# Get the correlation matrix
+cormat <- round(cor(spot_data_scaled_no_outliers), 2)
+
+# Reorder the correlation matrix
+cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+
+# Melt the correlation matrix
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()
+
+# Display the heatmap with correlation coefficients displayed on it
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))
+```
+
+```{r echo=FALSE}
+library(ResourceSelection)  # required for kdepairs
+kdepairs(spot_data_scaled_no_outliers)
+```
+
+To unscale the data with removed outliers
+```{r echo=FALSE}
+library(ggfortify)
+df <- spot_data_scaled_no_outliers
+spot_data.ns <- ggfortify::unscale(base::scale(df))
+head(spot_data.ns)
+```
